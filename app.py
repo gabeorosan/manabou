@@ -13,6 +13,7 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 app, rt = fast_app()
 
 VOCAB_FILE = "vocab.txt"
+REVIEW_TO_NEW_RATIO = 0.5  # 0.5 means 50% review, 50% new.  0.8 means 80% review, 20% new.
 
 async def get_explanation(question_data, selected_answer=None):
     is_correct_bool = selected_answer == question_data['answer'] if selected_answer else True
@@ -48,6 +49,17 @@ async def get_explanation(question_data, selected_answer=None):
 
 async def generate_question_gemini(known_words):
     if not known_words:
+        return await generate_new_word_question(known_words)  # Always new word if no known words
+
+    # Use the REVIEW_TO_NEW_RATIO to control the probability
+    if random.random() < REVIEW_TO_NEW_RATIO:  # Use random.random() for a float comparison
+        return await generate_known_word_question(known_words)
+    else:
+        return await generate_new_word_question(known_words)
+
+
+async def generate_new_word_question(known_words):
+    if not known_words:
         vocab_str = "No known vocabulary yet."
     else:
         vocab_str = ", ".join(known_words)
@@ -55,7 +67,7 @@ async def generate_question_gemini(known_words):
     prompt = f"""
 Vocab words: {vocab_str}
 
-Based on the preceding list of vocab words, create a new word at a similar or slightly higher level of difficulty to add to the list, create a Japanese definition for that word to use as a multiple choice question, and choose three other words to use as incorrect multiple choice options. The new word must be a word that is not already in the list of known words, and it must be the only word that matches the definition so that the answer is unambiguous. Put the correct answer as option number 1. Do not put furigana or romaji.
+Based on the above list of vocab words, create a new word at a similar or slightly higher level of difficulty to add to the list, create a Japanese definition for that word to use as a multiple choice question, and choose three other words to use as incorrect multiple choice options. The new word must be a word that is not already in the vocab word list, and it must be the only word that matches the definition so that the answer is unambiguous. Put the correct answer as option number 1. Do not put furigana or romaji.
 
 Format the output as follows, with no other text:
 Definition: [Japanese definition/description]
@@ -94,6 +106,61 @@ Definition: [Japanese definition/description]
             await asyncio.sleep(5)
 
     return None
+
+
+
+async def generate_known_word_question(known_words):
+    if not known_words:
+        return None  # Should not happen, but handle gracefully
+
+    # Choose a random word from the known words
+    target_word = random.choice(known_words)
+
+    prompt = f"""
+Create a Japanese definition for the word: {target_word} and choose three other words use as incorrect multiple choice options. {target_word} must be the only word that matches the definition so that the answer is unambiguous. Put the correct answer as option number 1. Do not put furigana or romaji. 
+
+Format the output as follows, with no other text:
+Definition: [Japanese definition/description]
+1) [correct option]
+2) [incorrect option]
+3) [incorrect option]
+4) [incorrect option]
+"""
+
+    for attempt in range(10):
+        try:
+            response = await model.generate_content_async(prompt)
+            response_text = response.text.strip()
+            print(f"Gemini Output (Attempt {attempt + 1}):\n{response_text}")
+
+            question_data = {}
+            lines = response_text.strip().split('\n')
+
+            # Remove empty lines
+            lines = [line for line in lines if line.strip()]
+
+            if len(lines) < 5:
+                print(f"Parsing failed with model {model}, attempt {attempt + 1}")
+                continue
+
+            question_data["question"] = lines[0].split(': ', 1)[1].strip()
+            options_list = [line.split(') ', 1)[1].strip() for line in lines[1:5]]
+            question_data["options"] = options_list
+
+            # Ensure the correct answer is the target word
+            if options_list[0] != target_word:
+                print(f"Correct answer mismatch (Attempt {attempt + 1}). Expected {target_word}, got {options_list[0]}")
+                continue # Retry if correct answer is not the expected.
+            question_data["answer"] = options_list[0]
+            return question_data
+
+        except Exception as e:
+            print(f"Request Error (Attempt {attempt + 1}): {e}")
+            print(f"Question generation failed with model {model}, attempt {attempt+1}: {e}")
+        if attempt < 9:
+            await asyncio.sleep(5)
+    return None
+
 
 
 def load_word_progress():
@@ -326,4 +393,3 @@ async def explain(selected_answer: str = ""):
     return Div("No question to explain", cls="explanation-area")
 
 serve()
-
