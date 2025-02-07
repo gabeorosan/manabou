@@ -13,7 +13,9 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 app, rt = fast_app()
 
 VOCAB_FILE = "vocab.txt"
+# --- Ratio Control ---
 REVIEW_TO_NEW_RATIO = 0.5  # 0.5 means 50% review, 50% new.  0.8 means 80% review, 20% new.
+# --- End Ratio Control ---
 
 async def get_explanation(question_data, selected_answer=None):
     is_correct_bool = selected_answer == question_data['answer'] if selected_answer else True
@@ -67,7 +69,7 @@ async def generate_new_word_question(known_words):
     prompt = f"""
 Vocab words: {vocab_str}
 
-Based on the above list of vocab words, create a new word at a similar or slightly higher level of difficulty to add to the list, create a Japanese definition for that word to use as a multiple choice question, and choose three other words to use as incorrect multiple choice options. The new word must be a word that is not already in the vocab word list, and it must be the only word that matches the definition so that the answer is unambiguous. Put the correct answer as option number 1. Do not put furigana or romaji.
+Based on the preceding list of vocab words, create a new word at a similar or slightly higher level of difficulty to add to the list, create a Japanese definition for that word to use as a multiple choice question, and choose three other words to use as incorrect multiple choice options. The new word must be a word that is not already in the list of known words, and it must be the only word that matches the definition so that the answer is unambiguous. Put the correct answer as option number 1. Do not put furigana or romaji.
 
 Format the output as follows, with no other text:
 Definition: [Japanese definition/description]
@@ -117,7 +119,7 @@ async def generate_known_word_question(known_words):
     target_word = random.choice(known_words)
 
     prompt = f"""
-Create a Japanese definition for the word: {target_word} and choose three other words use as incorrect multiple choice options. {target_word} must be the only word that matches the definition so that the answer is unambiguous. Put the correct answer as option number 1. Do not put furigana or romaji. 
+Create a Japanese definition for the word: {target_word}.  Also, choose three other words from the following list to use as incorrect multiple choice options: {', '.join(known_words)}.  The definition must be specific enough that '{target_word}' is clearly the only correct answer among the four options. Do not put furigana or romaji.  Put the correct answer ({target_word}) as option number 1.
 
 Format the output as follows, with no other text:
 Definition: [Japanese definition/description]
@@ -175,11 +177,11 @@ def save_word_progress(known_words):
     path.write_text("\n".join(known_words))
 
 def update_word_progress(word, correct, known_words):
-     if correct:
-        if word not in known_words:
-            known_words.append(word)
-            save_word_progress(known_words)
-     return known_words
+    # ALWAYS add the word, regardless of correctness
+    if word not in known_words:
+        known_words.append(word)
+        save_word_progress(known_words)
+    return known_words
 
 
 def get_due_card_fraction(known_words):
@@ -376,7 +378,7 @@ async def answer(correct_answer: str, selected_answer: str, word: str):
         }});
     """)
 
-    new_known_words = await update_word_progress_async(word, correct)
+    new_known_words = await update_word_progress_async(word, correct)  # Pass 'correct' for consistency
     known_words[:] = new_known_words
     return Div(highlight_script)
 
