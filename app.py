@@ -8,7 +8,7 @@ import time
 from fasthtml.components import Zero_md, HTML, RawHTML
 import asyncio
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.0-flash")
 app, rt = fast_app()
 
