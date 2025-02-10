@@ -64,7 +64,7 @@ async def generate_known_word_question(known_words, mean, variance):
        print(f"generate_known_word_question - Bounds adjusted. Lower: {lower_bound}, Upper: {upper_bound}")
     target_word_index = random.randint(lower_bound, upper_bound -1)
     target_word = known_words[target_word_index]
-    print(f"generate_known_word_question - Target word: {target_word}")
+    print(f"generate_known_word_question - Target word: {target_word}, Index: {target_word_index}")
     prompt = f"""
 Write a Japanese definition for the word {target_word} to use as a multiple choice question, and choose three other words to use as incorrect multiple choice options. Put the hiragana for the full definition on the line after it. To make the answer unambiguous, choose the incorrect options so that they do not fit the definition. Put the correct answer as option number 1. Do not put furigana or romaji.
 
@@ -93,6 +93,7 @@ Hiragana: [Hiragana for Japanese definition]
             options_list = [line.split(') ', 1)[1].strip() for line in lines[2:6]]
             question_data["options"] = options_list
             question_data["answer"] = options_list[0]
+            question_data["word_index"] = target_word_index  # Store the index
             print("generate_known_word_question - Question data:", question_data)
             return question_data
         except Exception as e:
@@ -113,9 +114,8 @@ def load_word_progress():
         print("load_word_progress - No vocab file found.")
         return []
 
-def update_word_progress(word, correct, known_words, mean, variance):
-    word_index = known_words.index(word)
-    print(f"update_word_progress - Word: {word}, Correct: {correct}, Index: {word_index}")
+def update_word_progress(word_index, correct, known_words, mean, variance):
+    print(f"update_word_progress - Correct: {correct}, Index: {word_index}")
     if correct:
         mean = min(len(known_words) - variance, mean + 100)
         print(f"update_word_progress - Answer correct, increasing mean to: {mean}")
@@ -213,7 +213,7 @@ async def index():
     if question_data is None:
         print("index - No question data available.")
         return Div("Loading...", cls="completed-message")
-    word_index = known_words.index(question_data['answer']) if question_data and question_data['answer'] in known_words else 0
+    word_index = question_data['word_index'] if question_data else 0
     due_count, total_vocab_count = get_due_card_fraction(known_words)
     progress_html = P(f"{word_index+1}/{total_vocab_count}", cls="progress")
     mean_html =  P(f"{int(np.round(mean))} 位", cls="progress", style="margin-top: 20px;")
@@ -230,7 +230,7 @@ async def index():
     for i, option in enumerate(shuffled_options):
         button = Button(
             option,
-            hx_post=f"/answer?correct_answer={question_data['answer']}&selected_answer={option}&word={question_data['word_to_review']}",
+            hx_post=f"/answer?correct_answer={question_data['answer']}&selected_answer={option}&word_index={word_index}",
             hx_target="#explanation",
             cls="choice-btn",
             data_choice=chr(ord('a') + i),
@@ -300,11 +300,11 @@ def _style_css():
     """
 
 @rt("/answer")
-async def answer(correct_answer: str, selected_answer: str, word: str):
+async def answer(correct_answer: str, selected_answer: str, word_index: int):
     global known_words, current_question_data, current_explanation, mean, variance
-    print(f"answer - Correct answer: {correct_answer}, Selected answer: {selected_answer}, Word: {word}")
+    print(f"answer - Correct answer: {correct_answer}, Selected answer: {selected_answer}, Word Index: {word_index}")
     correct = selected_answer == correct_answer
-    mean, variance = update_word_progress(word, correct, known_words, mean, variance)
+    mean, variance = update_word_progress(word_index, correct, known_words, mean, variance)
     save_progress(mean, variance)
     print(f"answer - Updated mean: {mean}, variance: {variance}")
     highlight_script = Script(f"""
