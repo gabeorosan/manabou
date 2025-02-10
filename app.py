@@ -171,12 +171,13 @@ known_words = load_word_progress()
 next_question_data = None
 current_question_data = None
 current_explanation = None
+current_word_index = 0 # Initialize the current word index
 prefetch_lock = asyncio.Lock()
 mean, variance = load_progress()
 
 
 async def prefetch_next_question():
-    global next_question_data, known_words, prefetch_lock, mean, variance
+    global next_question_data, known_words, prefetch_lock, mean, variance, current_word_index
     async with prefetch_lock:
         print("prefetch_next_question - Starting.")
         if next_question_data is None:
@@ -190,7 +191,7 @@ async def prefetch_next_question():
 
 
 async def prefetch_explanation_and_next_question():
-    global current_question_data, current_explanation, next_question_data, known_words, prefetch_lock, mean, variance
+    global current_question_data, current_explanation, next_question_data, known_words, prefetch_lock, mean, variance, current_word_index
 
     async with prefetch_lock:
         print("prefetch_explanation_and_next_question - Starting.")
@@ -207,13 +208,18 @@ async def prefetch_explanation_and_next_question():
 
 
 async def get_next_question():
-    global next_question_data, current_question_data, current_explanation, mean, variance
+    global next_question_data, current_question_data, current_explanation, mean, variance, current_word_index
     print("get_next_question - Starting.")
     if current_question_data is None:
         question_data = await generate_question_gemini(known_words, mean, variance)
         if question_data:
               question_data['word_to_review'] = question_data['answer']
               current_question_data = question_data
+              #find the index of the word to review, starting from current_word_index
+              try:
+                current_word_index = known_words.index(current_question_data['word_to_review'], current_word_index)
+              except ValueError:
+                current_word_index = 0
               print("get_next_question - Got initial question data.")
         else:
             print("get_next_question - Failed to get initial question.")
@@ -229,6 +235,12 @@ async def get_next_question():
         await asyncio.sleep(0.1)
     current_question_data = next_question_data
     next_question_data = None
+     #find the index of the word to review, starting from current_word_index
+    try:
+      current_word_index = known_words.index(current_question_data['word_to_review'], current_word_index) + 1
+    except ValueError:
+      current_word_index = 0 # Reset if the word isn't found (shouldn't normally happen)
+
     options = current_question_data['options']
     random.shuffle(options)
     print("get_next_question - Got next question data.")
@@ -240,7 +252,7 @@ async def get_next_question():
 
 @rt("/")
 async def index():
-    global known_words, current_question_data, current_explanation, mean, variance
+    global known_words, current_question_data, current_explanation, mean, variance, current_word_index
     print("index - Starting.")
     question_data, shuffled_options = await get_next_question()
 
@@ -249,7 +261,9 @@ async def index():
         return Div("Loading...", cls="completed-message")
 
     due_count, total_vocab_count = get_due_card_fraction(known_words)
-    progress_html = P(f"{total_vocab_count} total words", cls="progress")
+    #progress_html = P(f"{total_vocab_count} total words", cls="progress")
+    progress_html = P(f"{current_word_index}/{total_vocab_count}", cls="progress")
+    elo_html = P(f"{int(mean)} 級", cls="elo")
 
     # Split the question and hiragana into lines
     question_lines = question_data["question"].splitlines()
@@ -287,7 +301,7 @@ async def index():
     zeromd_script = Script(type="module", src="https://cdn.jsdelivr.net/npm/zero-md@3?register")
     print("index - Returning main page.")
     return Div(
-        style, progress_html, question_display, *choice_buttons,
+        style, progress_html, elo_html, question_display, *choice_buttons,
         explanation_div, keyboard_script, zeromd_script,
         cls="main-container"
     )
@@ -334,6 +348,7 @@ def _style_css():
         body { font-family: sans-serif; display: flex; margin: 0; padding: 20px; background-color: #ffffff; color: #333; overflow-y: scroll; padding-bottom: 0px; }
         .main-container { display: flex; flex-direction: column; align-items: center; justify-content: start; min-height: 100vh; flex-grow: 1; margin-left: auto; margin-right: auto; max-width: 800px; }
         .progress { position: absolute; top: 10px; right: 10px; font-size: 0.9em; color: #777; }
+        .elo { position: absolute; top: 30px; right: 10px; font-size: 0.9em; color: #777; }
         .question-container { display: flex; flex-direction: column; align-items: center; margin-bottom: 10px; }
         .question-text { font-size: 1.5em; text-align: center; white-space: normal; line-height: 1.5; }
         .hiragana-text { font-size: 1.2em; color: #555; text-align: center; margin-bottom: 0px; }
