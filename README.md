@@ -1,4 +1,4 @@
-This is a local [fasthtml](https://www.fastht.ml/) web app for mining Japanese vocab using Gemini. It generates Japanese definitions for vocab words from a given list based on your ELO, along with incorrect multiple choice options, and gives explanations/translations.
+This is a local [fasthtml](https://www.fastht.ml/) web app for mining Japanese vocab using Gemini. It generates Japanese definitions for vocab words from a given list based on your ELO, along with incorrect multiple choice options, and gives explanations/translations. Vocab list is parsed form of these [15000 words](https://github.com/hingston/japanese/blob/master/15000-japanese-words.txt); can be substituted with anything.
 
 **Demo**
 ![App Demo](demo.gif)
